@@ -478,7 +478,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
 
                         try
                         {
-                            tokenParser = handler.ProvisionObjects(web, template, tokenParser, provisioningInfo);
+                           tokenParser = handler.ProvisionObjects(web, template, tokenParser, provisioningInfo);
                         }
                         catch (Exception ex)
                         {

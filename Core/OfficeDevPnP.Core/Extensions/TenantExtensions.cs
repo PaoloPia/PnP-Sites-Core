@@ -1027,6 +1027,13 @@ namespace Microsoft.SharePoint.Client
 #if !ONPREMISES
         public static bool IsCurrentUserTenantAdmin(ClientContext clientContext)
         {
+            // Swapped logic for PnP Provisioning Service only
+            if (PnPProvisioningContext.Current != null)
+            {
+                return IsCurrentUserTenantAdminViaGraph();
+            }
+
+            // NOTE: Old logic, was before the previous one
             // In order to support an App Only AAD connection that has Sites.FullControl.All permission
             // we need to check via the SPO approach first as the Microsoft Graph approach currently
             // assumes a user is connected and therefore does not work for an App Only AAD connection.
@@ -1035,10 +1042,6 @@ namespace Microsoft.SharePoint.Client
                 return true;
 			}
 
-            if (PnPProvisioningContext.Current != null)
-            {
-                return IsCurrentUserTenantAdminViaGraph();
-            }
 
             return false;
         }
@@ -1108,7 +1111,7 @@ namespace Microsoft.SharePoint.Client
                         tenant.EnsureProperty(t => t.RootSiteUrl);
 
                         // If we've got access to the tenant admin context, 
-                        // it means that the currently connecte user is an admin
+                        // it means that the currently connected user is an admin
                         return (true);
                     }
                 }
