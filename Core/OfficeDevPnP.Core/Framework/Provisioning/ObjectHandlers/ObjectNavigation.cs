@@ -516,16 +516,23 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                         WriteMessage(String.Format(CoreResources.Provisioning_ObjectHandlers_Navigation_Link_Provisioning_Failed, ex.Message), ProvisioningMessageType.Warning);
                     }
                 }
+                catch (Exception ex)
+                {
+                    WriteMessage(String.Format(CoreResources.Provisioning_ObjectHandlers_Navigation_Link_Provisioning_Failed, ex.Message), ProvisioningMessageType.Warning);
+                }
 
-                ProvisionStructuralNavigationNodes(
-                    web,
-                    parser,
-                    navigationType,
-                    node.NavigationNodes,
-                    scope,
-                    parser.ParseString(node.Title),
-                    parentNodeTitle
-                );
+                if (node.NavigationNodes != null && node.NavigationNodes.Count > 0)
+                {
+                    ProvisionStructuralNavigationNodes(
+                        web,
+                        parser,
+                        navigationType,
+                        node.NavigationNodes,
+                        scope,
+                        parser.ParseString(node.Title),
+                        parentNodeTitle
+                    );
+                }
             }
         }
 

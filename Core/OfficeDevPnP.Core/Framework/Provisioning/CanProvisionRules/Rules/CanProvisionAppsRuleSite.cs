@@ -112,18 +112,20 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.CanProvisionRules.Rules
                                 var rootFolder = appCatalogContext.Web.EnsureProperty(w => w.RootFolder);
                                 var timeCreated = rootFolder.TimeCreated;
 
-                                if (DateTime.UtcNow.Subtract(timeCreated).TotalHours < 2)
-                                {
-                                    result.CanProvision = false;
-                                    result.Issues.Add(new CanProvisionIssue()
-                                    {
-                                        Source = this.Name,
-                                        Tag = CanProvisionIssueTags.APP_CATALOG_NOT_YEY_FULLY_PROVISIONED,
-                                        Message = CanProvisionIssuesMessages.App_Catalog_Not_Yet_Fully_Provisioned,
-                                        ExceptionMessage = null, // Here we don't have any specific exception
-                                        ExceptionStackTrace = null, // Here we don't have any specific exception
-                                    });
-                                }
+                                // Removed on May 12th to see if it is still needed
+
+                                //if (DateTime.UtcNow.Subtract(timeCreated).TotalHours < 2)
+                                //{
+                                //    result.CanProvision = false;
+                                //    result.Issues.Add(new CanProvisionIssue()
+                                //    {
+                                //        Source = this.Name,
+                                //        Tag = CanProvisionIssueTags.APP_CATALOG_NOT_YET_FULLY_PROVISIONED,
+                                //        Message = CanProvisionIssuesMessages.App_Catalog_Not_Yet_Fully_Provisioned,
+                                //        ExceptionMessage = null, // Here we don't have any specific exception
+                                //        ExceptionStackTrace = null, // Here we don't have any specific exception
+                                //    });
+                                //}
 
                             }
                         }

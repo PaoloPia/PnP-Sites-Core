@@ -25,6 +25,8 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
         public static readonly string[] BlockedExtensionsInNoScript = new string[] { ".asmx", ".ascx", ".aspx", ".htc", ".jar", ".master", ".swf", ".xap", ".xsf" };
         public static readonly string[] BlockedLibrariesInNoScript = new string[] { "_catalogs/theme", "style library", "_catalogs/lt", "_catalogs/wp" };
 
+        private readonly int MAX_RETRIES = 3;
+
         public override string Name
         {
             get { return "Files"; }
@@ -62,170 +64,188 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                 var originalWeb = web; // Used to store and re-store context in case files are deployed to masterpage gallery
                 foreach (var file in filesToProcess)
                 {
-                    file.Src = parser.ParseString(file.Src);
-                    var targetFileName = parser.ParseString(
-                        !String.IsNullOrEmpty(file.TargetFileName) ? file.TargetFileName : template.Connector.GetFilenamePart(file.Src)
-                        );
+                    int retries = 0;
 
-                    currentFileIndex++;
-                    WriteSubProgress("File", targetFileName, currentFileIndex, filesToProcess.Length);
-                    var folderName = parser.ParseString(file.Folder);
-
-                    if (folderName.ToLower().Contains("/_catalogs/"))
+                    while (retries <= MAX_RETRIES)
                     {
-                        // Edge case where you have files in the template which should be provisioned to the site collection
-                        // master page gallery and not to a connected subsite
-                        web = web.Context.GetSiteCollectionContext().Web;
-                        web.EnsureProperties(w => w.ServerRelativeUrl, w => w.Url);
-                    }
-
-                    if (folderName.ToLower().StartsWith((web.ServerRelativeUrl.ToLower())))
-                    {
-                        folderName = folderName.Substring(web.ServerRelativeUrl.Length);
-                    }
-
-                    if (SkipFile(isNoScriptSite, targetFileName, folderName))
-                    {
-                        // add log message
-                        scope.LogWarning(CoreResources.Provisioning_ObjectHandlers_Files_SkipFileUpload, targetFileName, folderName);
-                        continue;
-                    }
-
-                    var folder = web.EnsureFolderPath(folderName);
-#if !SP2013
-                    //register folder UniqueId as Token
-                    folder.EnsureProperties(p => p.UniqueId, p => p.ServerRelativeUrl);
-                    parser.AddToken(new FileUniqueIdToken(web, folder.ServerRelativeUrl.Substring(web.ServerRelativeUrl.Length).TrimStart("/".ToCharArray()), folder.UniqueId));
-                    parser.AddToken(new FileUniqueIdEncodedToken(web, folder.ServerRelativeUrl.Substring(web.ServerRelativeUrl.Length).TrimStart("/".ToCharArray()), folder.UniqueId));
-#endif
-                    var checkedOut = false;
-
-                    var targetFile = folder.GetFile(template.Connector.GetFilenamePart(targetFileName));
-
-                    if (targetFile != null)
-                    {
-                        if (file.Overwrite)
+                        try
                         {
-                            scope.LogDebug(CoreResources.Provisioning_ObjectHandlers_Files_Uploading_and_overwriting_existing_file__0_, targetFileName);
-                            checkedOut = CheckOutIfNeeded(web, targetFile);
+                            // Increment the number of retries
+                            retries++;
 
-                            using (var stream = FileUtilities.GetFileStream(template, file))
+                            file.Src = parser.ParseString(file.Src);
+                            var targetFileName = parser.ParseString(
+                                !String.IsNullOrEmpty(file.TargetFileName) ? file.TargetFileName : template.Connector.GetFilenamePart(file.Src)
+                                );
+
+                            currentFileIndex++;
+                            WriteSubProgress("File", targetFileName, currentFileIndex, filesToProcess.Length);
+                            var folderName = parser.ParseString(file.Folder);
+
+                            if (folderName.ToLower().Contains("/_catalogs/"))
                             {
-                                targetFile = UploadFile(folder, stream, targetFileName, file.Overwrite);
+                                // Edge case where you have files in the template which should be provisioned to the site collection
+                                // master page gallery and not to a connected subsite
+                                web = web.Context.GetSiteCollectionContext().Web;
+                                web.EnsureProperties(w => w.ServerRelativeUrl, w => w.Url);
                             }
-                        }
-                        else
-                        {
-                            checkedOut = CheckOutIfNeeded(web, targetFile);
-                        }
-                    }
-                    else
-                    {
-                        using (var stream = FileUtilities.GetFileStream(template, file))
-                        {
-                            if (stream == null)
+
+                            if (folderName.ToLower().StartsWith((web.ServerRelativeUrl.ToLower())))
                             {
-                                throw new FileNotFoundException($"File {file.Src} does not exist");
+                                folderName = folderName.Substring(web.ServerRelativeUrl.Length);
+                            }
+
+                            if (SkipFile(isNoScriptSite, targetFileName, folderName))
+                            {
+                                // add log message
+                                scope.LogWarning(CoreResources.Provisioning_ObjectHandlers_Files_SkipFileUpload, targetFileName, folderName);
                             }
                             else
                             {
-                                scope.LogDebug(CoreResources.Provisioning_ObjectHandlers_Files_Uploading_file__0_, targetFileName);
-                                targetFile = UploadFile(folder, stream, targetFileName, file.Overwrite);
-                            }
-                        }
-
-                        checkedOut = CheckOutIfNeeded(web, targetFile);
-                    }
-
-                    if (targetFile != null)
-                    {
-                        // Add the fileuniqueid tokens
+                                var folder = web.EnsureFolderPath(folderName);
 #if !SP2013
-                        targetFile.EnsureProperties(p => p.UniqueId, p => p.ServerRelativeUrl);
-                        parser.AddToken(new FileUniqueIdToken(web, targetFile.ServerRelativeUrl.Substring(web.ServerRelativeUrl.Length).TrimStart("/".ToCharArray()), targetFile.UniqueId));
-                        parser.AddToken(new FileUniqueIdEncodedToken(web, targetFile.ServerRelativeUrl.Substring(web.ServerRelativeUrl.Length).TrimStart("/".ToCharArray()), targetFile.UniqueId));
+                                //register folder UniqueId as Token
+                                folder.EnsureProperties(p => p.UniqueId, p => p.ServerRelativeUrl);
+                                parser.AddToken(new FileUniqueIdToken(web, folder.ServerRelativeUrl.Substring(web.ServerRelativeUrl.Length).TrimStart("/".ToCharArray()), folder.UniqueId));
+                                parser.AddToken(new FileUniqueIdEncodedToken(web, folder.ServerRelativeUrl.Substring(web.ServerRelativeUrl.Length).TrimStart("/".ToCharArray()), folder.UniqueId));
 #endif
+                                var checkedOut = false;
 
-#if !SP2013
-                        bool webPartsNeedLocalization = false;
-#endif
-                        if (file.WebParts != null && file.WebParts.Any())
-                        {
-                            targetFile.EnsureProperties(f => f.ServerRelativeUrl);
+                                var targetFile = folder.GetFile(template.Connector.GetFilenamePart(targetFileName));
 
-                            var existingWebParts = web.GetWebParts(targetFile.ServerRelativeUrl).ToList();
-                            foreach (var webPart in file.WebParts)
-                            {
-                                // check if the webpart is already set on the page
-                                if (existingWebParts.FirstOrDefault(w => w.WebPart.Title == parser.ParseString(webPart.Title)) == null)
+                                if (targetFile != null)
                                 {
-                                    scope.LogDebug(CoreResources.Provisioning_ObjectHandlers_Files_Adding_webpart___0___to_page, webPart.Title);
-                                    var wpEntity = new WebPartEntity();
-                                    wpEntity.WebPartTitle = parser.ParseString(webPart.Title);
-                                    wpEntity.WebPartXml = parser.ParseXmlString(webPart.Contents).Trim(new[] { '\n', ' ' });
-                                    wpEntity.WebPartZone = webPart.Zone;
-                                    wpEntity.WebPartIndex = (int)webPart.Order;
-                                    var wpd = web.AddWebPartToWebPartPage(targetFile.ServerRelativeUrl, wpEntity);
-#if !SP2013
-                                    if (webPart.Title.ContainsResourceToken())
+                                    if (file.Overwrite)
                                     {
-                                        // update data based on where it was added - needed in order to localize wp title
-                                        wpd.EnsureProperties(w => w.ZoneId, w => w.WebPart, w => w.WebPart.Properties);
-                                        webPart.Zone = wpd.ZoneId;
-                                        webPart.Order = (uint)wpd.WebPart.ZoneIndex;
-                                        webPartsNeedLocalization = true;
+                                        scope.LogDebug(CoreResources.Provisioning_ObjectHandlers_Files_Uploading_and_overwriting_existing_file__0_, targetFileName);
+                                        checkedOut = CheckOutIfNeeded(web, targetFile);
+
+                                        using (var stream = FileUtilities.GetFileStream(template, file))
+                                        {
+                                            targetFile = UploadFile(folder, stream, targetFileName, file.Overwrite);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        checkedOut = CheckOutIfNeeded(web, targetFile);
+                                    }
+                                }
+                                else
+                                {
+                                    using (var stream = FileUtilities.GetFileStream(template, file))
+                                    {
+                                        if (stream == null)
+                                        {
+                                            throw new FileNotFoundException($"File {file.Src} does not exist");
+                                        }
+                                        else
+                                        {
+                                            scope.LogDebug(CoreResources.Provisioning_ObjectHandlers_Files_Uploading_file__0_, targetFileName);
+                                            targetFile = UploadFile(folder, stream, targetFileName, file.Overwrite);
+                                        }
+                                    }
+
+                                    checkedOut = CheckOutIfNeeded(web, targetFile);
+                                }
+
+                                if (targetFile != null)
+                                {
+                                    // Add the fileuniqueid tokens
+#if !SP2013
+                                    targetFile.EnsureProperties(p => p.UniqueId, p => p.ServerRelativeUrl);
+                                    parser.AddToken(new FileUniqueIdToken(web, targetFile.ServerRelativeUrl.Substring(web.ServerRelativeUrl.Length).TrimStart("/".ToCharArray()), targetFile.UniqueId));
+                                    parser.AddToken(new FileUniqueIdEncodedToken(web, targetFile.ServerRelativeUrl.Substring(web.ServerRelativeUrl.Length).TrimStart("/".ToCharArray()), targetFile.UniqueId));
+#endif
+
+#if !SP2013
+                                    bool webPartsNeedLocalization = false;
+#endif
+                                    if (file.WebParts != null && file.WebParts.Any())
+                                    {
+                                        targetFile.EnsureProperties(f => f.ServerRelativeUrl);
+
+                                        var existingWebParts = web.GetWebParts(targetFile.ServerRelativeUrl).ToList();
+                                        foreach (var webPart in file.WebParts)
+                                        {
+                                            // check if the webpart is already set on the page
+                                            if (existingWebParts.FirstOrDefault(w => w.WebPart.Title == parser.ParseString(webPart.Title)) == null)
+                                            {
+                                                scope.LogDebug(CoreResources.Provisioning_ObjectHandlers_Files_Adding_webpart___0___to_page, webPart.Title);
+                                                var wpEntity = new WebPartEntity();
+                                                wpEntity.WebPartTitle = parser.ParseString(webPart.Title);
+                                                wpEntity.WebPartXml = parser.ParseXmlString(webPart.Contents).Trim(new[] { '\n', ' ' });
+                                                wpEntity.WebPartZone = webPart.Zone;
+                                                wpEntity.WebPartIndex = (int)webPart.Order;
+                                                var wpd = web.AddWebPartToWebPartPage(targetFile.ServerRelativeUrl, wpEntity);
+#if !SP2013
+                                                if (webPart.Title.ContainsResourceToken())
+                                                {
+                                                    // update data based on where it was added - needed in order to localize wp title
+                                                    wpd.EnsureProperties(w => w.ZoneId, w => w.WebPart, w => w.WebPart.Properties);
+                                                    webPart.Zone = wpd.ZoneId;
+                                                    webPart.Order = (uint)wpd.WebPart.ZoneIndex;
+                                                    webPartsNeedLocalization = true;
+                                                }
+#endif
+                                            }
+                                        }
+                                    }
+
+#if !SP2013
+                                    if (webPartsNeedLocalization)
+                                    {
+                                        file.LocalizeWebParts(web, parser, targetFile, scope);
                                     }
 #endif
+
+                                    //Set Properties before Checkin
+                                    if (file.Properties != null && file.Properties.Any())
+                                    {
+                                        Dictionary<string, string> transformedProperties = file.Properties.ToDictionary(property => property.Key, property => parser.ParseString(property.Value));
+                                        SetFileProperties(targetFile, transformedProperties, parser, false);
+                                    }
+
+                                    switch (file.Level)
+                                    {
+                                        case Model.FileLevel.Published:
+                                            {
+                                                targetFile.PublishFileToLevel(Microsoft.SharePoint.Client.FileLevel.Published);
+                                                break;
+                                            }
+                                        case Model.FileLevel.Draft:
+                                            {
+                                                targetFile.PublishFileToLevel(Microsoft.SharePoint.Client.FileLevel.Draft);
+                                                break;
+                                            }
+                                        default:
+                                            {
+                                                if (checkedOut)
+                                                {
+                                                    targetFile.CheckIn("", CheckinType.MajorCheckIn);
+                                                    web.Context.ExecuteQueryRetry();
+                                                }
+                                                break;
+                                            }
+                                    }
+
+                                    // Don't set security when nothing is defined. This otherwise breaks on files set outside of a list
+                                    if (file.Security != null &&
+                                        (file.Security.ClearSubscopes == true || file.Security.CopyRoleAssignments == true || file.Security.RoleAssignments.Count > 0))
+                                    {
+                                        targetFile.ListItemAllFields.SetSecurity(parser, file.Security, WriteMessage);
+                                    }
                                 }
                             }
-                        }
 
-#if !SP2013
-                        if (webPartsNeedLocalization)
-                        {
-                            file.LocalizeWebParts(web, parser, targetFile, scope);
-                        }
-#endif
-                        
-                        //Set Properties before Checkin
-                        if (file.Properties != null && file.Properties.Any())
-                        {
-                            Dictionary<string, string> transformedProperties = file.Properties.ToDictionary(property => property.Key, property => parser.ParseString(property.Value));
-                            SetFileProperties(targetFile, transformedProperties, parser, false);
-                        }
+                            web = originalWeb; // restore context in case files are provisioned to the master page gallery #1059
 
-                        switch (file.Level)
-                        {
-                            case Model.FileLevel.Published:
-                                {
-                                    targetFile.PublishFileToLevel(Microsoft.SharePoint.Client.FileLevel.Published);
-                                    break;
-                                }
-                            case Model.FileLevel.Draft:
-                                {
-                                    targetFile.PublishFileToLevel(Microsoft.SharePoint.Client.FileLevel.Draft);
-                                    break;
-                                }
-                            default:
-                                {
-                                    if (checkedOut)
-                                    {
-                                        targetFile.CheckIn("", CheckinType.MajorCheckIn);
-                                        web.Context.ExecuteQueryRetry();
-                                    }
-                                    break;
-                                }
+                            break;
                         }
-
-                        // Don't set security when nothing is defined. This otherwise breaks on files set outside of a list
-                        if (file.Security != null &&
-                            (file.Security.ClearSubscopes == true || file.Security.CopyRoleAssignments == true || file.Security.RoleAssignments.Count > 0))
+                        catch (Exception ex)
                         {
-                            targetFile.ListItemAllFields.SetSecurity(parser, file.Security, WriteMessage);
+                            WriteMessage($"Failed processing file: {file.TargetFileName} - Iteration: {retries}/{MAX_RETRIES}", ProvisioningMessageType.Error);
                         }
                     }
-
-                    web = originalWeb; // restore context in case files are provisioned to the master page gallery #1059
                 }
             }
             WriteMessage("Done processing files", ProvisioningMessageType.Completed);

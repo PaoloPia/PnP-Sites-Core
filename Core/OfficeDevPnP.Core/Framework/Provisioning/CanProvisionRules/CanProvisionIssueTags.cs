@@ -30,6 +30,6 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.CanProvisionRules
         /// <summary>
         /// The App Catalog needs a few hours to be fully provisioned
         /// </summary>
-        APP_CATALOG_NOT_YEY_FULLY_PROVISIONED
+        APP_CATALOG_NOT_YET_FULLY_PROVISIONED
     }
 }
